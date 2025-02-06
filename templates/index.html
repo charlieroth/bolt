@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <meta name="theme-color" content="#ffffff" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ relay_name }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-black h-screen flex flex-col justify-between">
+    <main class="flex-grow flex flex-col items-center px-6 text-center gap-6 mt-10">
+      <h1 class="text-yellow-400 text-5xl font-semibold tracking-tight sm:text-7xl">
+        ⚡️ {{ relay_name }}
+      </h1>
+
+      <p class="text-md md:text-lg text-gray-300 max-w-xl">
+        {{ relay_description }}
+      </p>
+
+      <div class="flex flex-col items-center">
+        <p class="text-lg font-semibold md:text-xl text-gray-300 max-w-xl mb-2">Supported NIPs</p>
+        <ul class="text-lg md:text-xl text-gray-300 max-w-xl mb-6 list-disc">
+          {% for supported_nip in supported_nips %}
+            <li class="text-gray-300">
+              <a href="{{ supported_nip.url }}" target="_blank" class="text-yellow-400 hover:text-yellow-300 underline">{{ supported_nip.nip }}</a>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </main>
+    <footer class="h-10 w-full bg-yellow-400 flex items-center justify-evenly text-center py-10">
+      <p>
+        Built with ❤️ by 
+        <a href="https://charlieroth.me" target="_blank" class="text-black hover:text-gray-600 underline">
+          Charlie Roth
+        </a> 
+      </p>
+      <p>
+        Powered by 
+        <a href="https://github.com/rust-nostr/nostr" target="_blank" class="text-black hover:text-gray-600 underline">
+          rust-nostr/nostr
+        </a> 
+      </p>
+      <p>
+        <a href="https://github.com/charlieroth/bolt" target="_blank" class="text-black hover:text-gray-600 underline">
+          Bolt on GitHub
+        </a>
+      </p>
+    </footer>
+  </body>
+</html>

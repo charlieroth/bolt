@@ -1,95 +1,58 @@
-use axum::extract::ws::{Message, WebSocket};
-use axum::extract::WebSocketUpgrade;
-use axum::response::IntoResponse;
-use axum::routing::get;
-use axum::Router;
-use bolt::{config::Config, relay::MemoryRelay};
-use futures::stream::StreamExt;
-use nostr::message::ClientMessage;
-use serde_json::Value;
-use std::time::Duration;
-use tokio::signal;
-use tower_http::timeout::TimeoutLayer;
+use axum::{
+    http::{header, Method, StatusCode},
+    response::IntoResponse,
+    routing::get,
+    Router,
+};
+use bolt::app::AppState;
+use bolt::config;
+use bolt::handlers::{index_handler::index_handler, websocket_handler::websocket_handler};
+use nostr_ndb::NdbDatabase;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tower_http::cors::{Any, CorsLayer};
 
 #[tokio::main]
 async fn main() {
-    let config = Config::new("config.yml").unwrap();
-    let memory_relay = MemoryRelay::new().unwrap();
+    let config = config::Config::new("config.yml").unwrap();
+    let app_state = Arc::new(AppState {
+        config: config.clone(),
+        db: NdbDatabase::open("relay.db").unwrap(),
+    });
+
+    let cors_layer = CorsLayer::new()
+        .allow_methods([Method::GET])
+        .allow_origin(Any)
+        .allow_headers([
+            header::CONTENT_TYPE,
+            header::ACCEPT,
+            header::USER_AGENT,
+            header::HOST,
+            header::REFERER,
+            header::ORIGIN,
+            header::ACCESS_CONTROL_REQUEST_METHOD,
+            header::ACCESS_CONTROL_REQUEST_HEADERS,
+        ]);
+
     let app = Router::new()
-        .route("/", get(websocket_handler))
-        .layer(TimeoutLayer::new(Duration::from_secs(10)));
+        .route("/", get(index_handler))
+        .route("/ws", get(websocket_handler))
+        .fallback(handler_404)
+        .layer(cors_layer)
+        .with_state(app_state);
 
     let addr = format!("{}:{}", config.relay_bind_address, config.relay_port);
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind(addr.clone()).await.unwrap();
+    println!("⚡️ Bolt Relay running on {}", addr);
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .unwrap();
+    tokio::signal::ctrl_c().await.unwrap();
 }
 
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
-    }
-}
-
-async fn websocket_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
-    ws.on_upgrade(|socket| websocket(socket))
-}
-
-async fn websocket(socket: WebSocket) {
-    let (mut sender, mut receiver) = socket.split();
-    while let Some(Ok(message)) = receiver.next().await {
-        if let Message::Text(msg) = message {
-            let client_message_json: Value = serde_json::from_str(&msg).unwrap();
-            let client_message = ClientMessage::from_value(client_message_json).unwrap();
-            match client_message {
-                ClientMessage::Event(event) => {
-                    println!("received event: {:?}", event);
-                }
-                ClientMessage::Req {
-                    subscription_id,
-                    filter,
-                } => {
-                    println!(
-                        "received req: subscription_id={:?}, filter={:?}",
-                        subscription_id, filter
-                    );
-                }
-                ClientMessage::Count {
-                    subscription_id,
-                    filter,
-                } => {
-                    println!(
-                        "received count: subscription_id={:?}, filter={:?}",
-                        subscription_id, filter
-                    );
-                }
-                ClientMessage::Close(subscription_id) => {
-                    println!("received close: subscription_id={:?}", subscription_id);
-                }
-                _ => {
-                    println!("received unsupported message: {:?}", client_message);
-                }
-            }
-        }
-    }
+async fn handler_404() -> impl IntoResponse {
+    (StatusCode::NOT_FOUND, "No route found")
 }
