@@ -3,6 +3,7 @@ use std::fs::File;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Limitations {
+    pub write_buffer_size: u64,
     pub max_message_length: u64,
     pub max_subscriptions: u64,
     pub max_filters: u64,
@@ -23,6 +24,7 @@ impl Default for Limitations {
         // These are sensible defaults defined in:
         // https://github.com/nostr-protocol/nips/blob/master/11.md#server-limitations
         Self {
+            write_buffer_size: 2 << 17,
             max_message_length: 16384,
             max_subscriptions: 20,
             max_filters: 100,
@@ -54,6 +56,12 @@ pub struct Config {
     pub relay_bind_address: String,
     #[serde(default)]
     pub limits: Limitations,
+    #[serde(default = "default_reject_future_seconds")]
+    pub reject_future_seconds: u64,
+}
+
+fn default_reject_future_seconds() -> u64 {
+    1800
 }
 
 impl Config {
